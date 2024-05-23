@@ -20,7 +20,7 @@ This project is licensed under the MIT License. See the **LICENSE** file for mor
 This project had been finished at March 2024, no changes shall be made to this main repository. No edits will be approved.
 
 ## Contact
-If you have any questions or need further information, please contact our team at: szhu094@ucr.edu
+If you have any questions or need further information, please contact our team at: connectnathaniel@gmail.com
 
 Authors:
 - Nathaniel Zhu
