@@ -1,0 +1,180 @@
+---
+title: "STAT 232 Final Project"
+author: "Nathaniel Zhu"
+date: "2024-03-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Loading Packages
+library(kknn) # For K-NN
+library(tidyverse)
+library(caret)
+library(smotefamily)
+
+```
+
+```{r}
+# Load dataset
+selected_df <- read.csv("Data/selected_df.csv")
+
+```
+
+### Feature Engieering starts here
+For the logarithmic transformation, we are going to apply this to the 'amt' (amount) feature. This transformation can normalize the distribution if the data is skewewd, which often improves modeling performance and efficiency.
+
+We are going to apply feature engineering before we delve into the Logistic Regression and KNN models below:
+```{r}
+# Apply logarithmic transformation to selected features
+selected_df$amt_log <- log(selected_df$amt + 1)
+
+```
+
+For polynomial features, since it can help capture interactions and non-linear relationships between the variables, we are going to apply this feature to some variables showing below. I am going to only test squared amt to test our LR and KNN below.
+```{r}
+# Polynomial transformation before LR and KNN
+
+# Part 1
+
+# Applying square to amt
+selected_df$amt_poly <- selected_df$amt^2
+
+```
+
+```{r}
+# Part 2
+
+# We could also do interactions between amt and age
+# This could capture the relationship between amt across different age
+selected_df$amt_age_interaction <- selected_df$amt * selected_df$age
+
+# Cubic transformation of 'age'
+selected_df$age_cubed <- selected_df$age^3
+
+# Square root of 'city_pop'
+selected_df$city_pop_sqrt <- sqrt(selected_df$city_pop)
+
+```
+
+***
+
+### Logistic Regression
+Here is the first example of regression model using the feature engineering $part 1$ from above
+```{r}
+# Logistic Regression model 1
+logistic_model_1 <- glm(is_fraud ~ amt_log + amt_poly + gender + age,
+                        data = selected_df,
+                        family = binomial)
+
+# Printing result
+summary(logistic_model_1)
+```
+
+Here is another example of regression model using further feature engineering listed in $part 2$ section of feature engineering
+```{r}
+# Logistic Regression Model 2
+logistic_model_2 <- glm(is_fraud ~ amt_log + amt_poly + gender + age + amt_age_interaction + age_cubed + city_pop_sqrt,
+                        data = selected_df,
+                        family = binomial)
+
+# Printing Result
+summary(logistic_model_2)
+
+```
+
+```{r}
+features <- selected_df[, c("amt", "age")]
+target <- selected_df$is_fraud
+
+# Apply SMOTE
+smote_data_balanced <- SMOTE(X = features, 
+                             target = target, 
+                             K = 5, 
+                             dup_size = 1)
+
+balanced_features <- rbind(features, smote_data_balanced$X)
+balanced_target <- c(target, smote_data_balanced$target)
+
+# Combine features and target into one data frame for the glm function
+balanced_data <- data.frame(balanced_features, is_fraud = balanced_target)
+
+# Build the logistic regression model
+logistic_model <- glm(is_fraud ~ ., data = balanced_data, family = binomial)
+summary(logistic_model)
+
+```
+
+***
+
+### K-Nearest Neighbor Model
+This is the part II of our data modeling - KNN.
+With the polynomial features we have done above, we are going to build KNN models below:
+```{r}
+# Setting seeds for reproductibility
+set.seed(232)
+
+# Setting index for train and test dataset
+index <- createDataPartition(selected_df$is_fraud, p = 0.6, list = FALSE)
+
+train_data <- selected_df[index,]
+test_data <- selected_df[-index,]
+
+
+```
+
+Feature Scaling
+Since we have the features we created above, we are going to scale them using the 'scale' function to the train dataset and then apply it to both train and test data to prevent data leakage.
+
+Since there are other non-numeric data in the dataset, we are going to exclude them first:
+```{r}
+# Excluding non-numeric data columns first
+numeric_columns <- sapply(train_data, is.numeric)
+
+# Scale the features
+train_data_scaled <- scale(train_data[, numeric_columns & names(train_data) != "is_fraud"])
+test_data_scaled <- scale(test_data[, numeric_columns & names(test_data) != "is_fraud"], 
+                         center = attr(train_data_scaled, "scaled:center"), 
+                         scale = attr(train_data_scaled, "scaled:scale"))
+
+# Convert scaled data back to data frames
+train_data_scaled <- as.data.frame(train_data_scaled)
+test_data_scaled <- as.data.frame(test_data_scaled)
+
+# Add the target variable back
+train_data_scaled$is_fraud <- train_data$is_fraud
+test_data_scaled$is_fraud <- test_data$is_fraud
+
+```
+
+Building KNN models
+```{r}
+# Fit the KNN model
+knn_model <- kknn(is_fraud ~ .,
+                  train_data_scaled,
+                  test_data_scaled,
+                  k = 5,
+                  distance = 1,
+                  kernel = "optimal"
+                  )
+
+# Predictions
+knn_predictions <- fitted(knn_model)
+
+```
+
+Model Evaluation
+```{r}
+# Convert predictions to factor for confusionMatrix with a 0.5 cutoff point
+knn_predictions <- ifelse(knn_predictions > 0.5, 1, 0)
+knn_predictions <- as.factor(knn_predictions)
+test_data_scaled$is_fraud <- as.factor(test_data_scaled$is_fraud)
+
+# Printing ConfusionMatrix
+confusionMatrix(knn_predictions, test_data_scaled$is_fraud)
+
+```
+
